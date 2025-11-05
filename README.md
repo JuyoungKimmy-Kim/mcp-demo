@@ -80,8 +80,47 @@ Add to RooCode MCP settings (`cline_mcp_settings.json`):
 }
 ```
 
-## Test
+## Testing
+
+### Unit Tests (Mock-based, no backend required)
+
+Fast tests using mocks. Can run without backend server.
 
 ```bash
+# Run all unit tests
+pytest tests/unit/ -v
+
+# Run specific unit test file
+pytest tests/unit/test_client.py -v
+pytest tests/unit/test_handlers.py -v
+pytest tests/unit/test_schemas.py -v
+```
+
+### Integration Tests (Requires running backend)
+
+Tests that call real API endpoints. Requires backend at `http://localhost:8000`.
+
+```bash
+# Run all integration tests
+pytest tests/integration/ -v
+
+# Run specific integration test
+pytest tests/integration/test_client.py -v
+```
+
+### Run All Tests
+
+```bash
+# Run all tests (unit + integration)
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
+```
+
+### Quick Manual Test
+
+```bash
+# Test all 5 tools manually
 python test_all_tools.py
 ```
