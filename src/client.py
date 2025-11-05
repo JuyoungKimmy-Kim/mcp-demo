@@ -43,12 +43,29 @@ class APIClient:
             logger.error(f"Request error: {str(e)}")
             raise
 
-    async def search_servers(self, keyword: Optional[str] = None) -> Dict[str, Any]:
-        """Search MCP servers by keyword"""
-        params = {}
+    async def _post(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Make POST request to API"""
+        url = f"{self.base_url}{endpoint}"
+        try:
+            logger.debug(f"POST {url} with data: {json_data}")
+            response = await self.client.post(url, json=json_data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
+            raise
+        except Exception as e:
+            logger.error(f"Request error: {str(e)}")
+            raise
+
+    async def search_servers(self, keyword: Optional[str] = None, tags: Optional[list[str]] = None) -> Dict[str, Any]:
+        """Search MCP servers by keyword and/or tags"""
+        json_data = {"status": "approved"}
         if keyword:
-            params["keyword"] = keyword
-        return await self._get("/mcp-servers/search", params)
+            json_data["keyword"] = keyword
+        if tags:
+            json_data["tags"] = tags
+        return await self._post("/mcp-servers/search", json_data)
 
     async def list_servers(
         self,
