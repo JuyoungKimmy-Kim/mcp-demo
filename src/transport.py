@@ -16,32 +16,39 @@ async def run_http_transport(app: Server, host: str = "0.0.0.0", port: int = 808
         port: Port to bind to
     """
     from mcp.server.sse import SseServerTransport
-    from starlette.applications import Starlette
-    from starlette.routing import Route
 
     sse = SseServerTransport("/messages")
 
-    async def handle_sse(request):
-        async with sse.connect_sse(
-            request.scope, request.receive, request._send
-        ) as streams:
-            await app.run(
-                streams[0], streams[1], app.create_initialization_options()
-            )
+    # Main ASGI app that routes requests
+    async def asgi_app(scope, receive, send):
+        """Main ASGI app for routing"""
+        if scope["type"] == "http":
+            path = scope["path"]
 
-    async def handle_messages(request):
-        await sse.handle_post_message(request.scope, request.receive, request._send)
-
-    starlette_app = Starlette(
-        routes=[
-            Route("/sse", endpoint=handle_sse),
-            Route("/messages", endpoint=handle_messages, methods=["POST"]),
-        ]
-    )
+            if path == "/sse":
+                # Handle SSE endpoint
+                async with sse.connect_sse(scope, receive, send) as streams:
+                    await app.run(
+                        streams[0], streams[1], app.create_initialization_options()
+                    )
+            elif path == "/messages":
+                # Handle messages endpoint
+                await sse.handle_post_message(scope, receive, send)
+            else:
+                # 404 for other paths
+                await send({
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [[b"content-type", b"text/plain"]],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": b"Not Found",
+                })
 
     import uvicorn
     logger.info(f"Starting HTTP transport on {host}:{port}")
-    config = uvicorn.Config(starlette_app, host=host, port=port, log_level="info")
+    config = uvicorn.Config(asgi_app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
 
