@@ -34,6 +34,54 @@ TRANSPORT_MODE=stdio python -m src.main
 
 Server runs on `http://localhost:8080`
 
+## Docker
+
+### Build and Run with Docker Compose
+
+```bash
+# Build and start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+```
+
+### Build and Run with Docker
+
+```bash
+# Build image
+docker build -t mcp-hub-mcp .
+
+# Run container
+docker run -d \
+  -p 8080:8080 \
+  -e MCP_HUB_URL=https://your-domain:port/api \
+  -e VERIFY_SSL=false \
+  --name mcp-hub-mcp \
+  mcp-hub-mcp
+
+# View logs
+docker logs -f mcp-hub-mcp
+
+# Stop container
+docker stop mcp-hub-mcp
+docker rm mcp-hub-mcp
+```
+
+### Configure for Production
+
+Edit `docker-compose.yml` environment variables:
+
+```yaml
+environment:
+  - MCP_HUB_URL=https://your-domain:port/api
+  - VERIFY_SSL=false
+  - LOG_LEVEL=INFO
+```
+
 ## Tools
 
 - `search_mcp_servers` - Search for MCP servers by keyword
