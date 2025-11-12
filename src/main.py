@@ -1,89 +1,38 @@
 #!/usr/bin/env python3
-"""
-MCP Hub MCP Server
-Provides tools to query the MCP Hub database
-"""
-
+"""MCP Hub MCP Server - Main Entry Point"""
 import asyncio
-import logging
 import os
-from typing import Any
-
-from dotenv import load_dotenv
 from mcp.server import Server
-from mcp.types import Tool, TextContent
 
-from .config import config
-from .client import APIClient
-from .tools.schemas import TOOLS
-from .tools.handlers import ToolHandler
-from .transport import run_http_transport, run_stdio_transport
-
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, config.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Initialize MCP server
-app = Server("mcp-hub-mcp")
-
-# Global instances
-api_client: APIClient | None = None
-tool_handler: ToolHandler | None = None
-
-
-@app.list_tools()
-async def list_tools() -> list[Tool]:
-    """List available tools"""
-    return TOOLS
-
-
-@app.call_tool()
-async def call_tool(name: str, arguments: Any) -> list[TextContent]:
-    """Handle tool calls"""
-    global tool_handler
-
-    if tool_handler is None:
-        return [TextContent(type="text", text="Error: Tool handler not initialized")]
-
-    return await tool_handler.handle_tool_call(name, arguments)
+from client.api_client import APIClient
+from schemas.tools import TOOLS
+from handlers.tools import handle_tool_call
+from transport.http import run_http_transport
 
 
 async def main():
-    """Main entry point"""
-    global api_client, tool_handler
+    """Main function"""
+    # MCP Hub URL 설정
+    api_base_url = os.getenv("MCP_HUB_URL", "http://localhost:8000")
 
-    # Initialize API client
-    api_client = APIClient()
-    logger.info(f"API client initialized (base URL: {api_client.base_url})")
+    # API Client 생성
+    api_client = APIClient(api_base_url)
 
-    # Initialize tool handler
-    tool_handler = ToolHandler(api_client)
-    logger.info("Tool handler initialized")
+    # MCP Server 생성
+    app = Server("mcp-hub-mcp")
 
-    # Determine transport mode
-    transport_mode = os.getenv("TRANSPORT_MODE", "http").lower()
+    @app.list_tools()
+    async def list_tools():
+        """Return list of available tools"""
+        return TOOLS
 
-    try:
-        if transport_mode == "stdio":
-            await run_stdio_transport(app)
-        else:
-            # Default to HTTP
-            await run_http_transport(
-                app,
-                host=config.server_host,
-                port=config.server_port
-            )
-    finally:
-        # Cleanup
-        if api_client:
-            await api_client.close()
-            logger.info("API client closed")
+    @app.call_tool()
+    async def call_tool(name: str, arguments: dict):
+        """Handle tool calls"""
+        return await handle_tool_call(name, arguments, api_client)
+
+    # HTTP Transport로 실행
+    await run_http_transport(app, api_client)
 
 
 if __name__ == "__main__":
