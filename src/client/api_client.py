@@ -28,7 +28,8 @@ class APIClient:
         self,
         sort: str = "favorites",
         order: str = "desc",
-        limit: int = 20
+        limit: int = 20,
+        offset: int = 0
     ) -> str:
         """List MCP servers with sorting"""
         params = {
@@ -36,7 +37,7 @@ class APIClient:
             "sort": sort,
             "order": order,
             "limit": limit,
-            "offset": 0
+            "offset": offset
         }
         data = await self._get("/api/v1/mcp-servers/", params)
 

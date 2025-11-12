@@ -10,7 +10,8 @@ async def handle_tool_call(name: str, arguments: Any, api_client) -> list[TextCo
         result = await api_client.list_servers(
             sort=arguments.get("sort", "favorites"),
             order=arguments.get("order", "desc"),
-            limit=arguments.get("limit", 20)
+            limit=arguments.get("limit", 20),
+            offset=arguments.get("offset", 0)
         )
         return [TextContent(type="text", text=result)]
 

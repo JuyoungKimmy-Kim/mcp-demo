@@ -24,6 +24,11 @@ TOOLS = [
                     "type": "integer",
                     "description": "Number of results",
                     "default": 20
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of results to skip",
+                    "default": 0
                 }
             }
         }
