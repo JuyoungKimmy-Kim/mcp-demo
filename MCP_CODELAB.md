@@ -468,16 +468,18 @@ python hello_mcp.py
 
 이제 실제로 유용한 MCP 서버를 만들어봅시다!
 
-**목표**: MCP Hub 데이터베이스를 검색하는 MCP 서버
+**목표**: MCP Hub 데이터베이스를 조회하는 MCP 서버
 
 **제공 기능**:
-- `list_mcp_servers`: 서버 목록 조회 (정렬, 페이징)
+- `get_mcp_server_details`: 특정 MCP 서버의 상세 정보 조회
 
-> 이 튜토리얼에서는 `list_mcp_servers` 하나만 구현하여 MCP 서버의 핵심 개념을 배웁니다. 다른 기능들(`search_mcp_servers`, `get_mcp_server_details`, `get_top_contributors`)은 같은 패턴으로 추가할 수 있습니다.
+> 이 튜토리얼에서는 `get_mcp_server_details` 하나만 구현하여 MCP 서버의 핵심 개념을 배웁니다. 다른 기능들(`list_mcp_servers`, `search_mcp_servers`, `get_top_contributors`)은 같은 패턴으로 추가할 수 있습니다.
 
 **데이터 소스**: MCP Hub REST API (`http://localhost:8000`)
 
 **Transport**: HTTP/SSE
+
+**Server URL**: `http://localhost:10004/sse`
 
 ### 5.1 프로젝트 구조 만들기
 
@@ -500,29 +502,17 @@ from mcp.types import Tool
 
 TOOLS = [
     Tool(
-        name="list_mcp_servers",
-        description="List MCP servers with sorting and pagination",
+        name="get_mcp_server_details",
+        description="Get detailed information about a specific MCP server",
         inputSchema={
             "type": "object",
             "properties": {
-                "sort": {
-                    "type": "string",
-                    "enum": ["favorites", "created_at"],
-                    "description": "Sort by favorites or creation date",
-                    "default": "favorites"
-                },
-                "order": {
-                    "type": "string",
-                    "enum": ["asc", "desc"],
-                    "description": "Sort order",
-                    "default": "desc"
-                },
-                "limit": {
+                "server_id": {
                     "type": "integer",
-                    "description": "Number of results",
-                    "default": 20
+                    "description": "The ID of the MCP server"
                 }
-            }
+            },
+            "required": ["server_id"]
         }
     ),
 ]
@@ -532,30 +522,29 @@ TOOLS = [
 - `name`: 도구 이름 (함수명 스타일)
 - `description`: Claude가 언제 이 도구를 사용할지 이해할 수 있는 명확한 설명
 - `inputSchema`: JSON Schema로 입력 검증
-  - `type`: 데이터 타입
-  - `enum`: 허용된 값 목록
-  - `default`: 기본값
-  - `required`: 필수 필드
+  - `type`: 데이터 타입 (integer, string 등)
+  - `description`: 파라미터 설명
+  - `required`: 필수 필드 목록
 
 ### 5.3 Step 2: API 클라이언트 구현
 
-**중요**: 이 코드는 **실제 MCP Hub REST API**를 호출합니다. API 문서(`CLAUDE.md` 참고)에 정의된 엔드포인트와 파라미터를 그대로 사용합니다.
+**중요**: 이 코드는 **실제 MCP Hub REST API**를 호출합니다. API 문서(`CLAUDE.md` 참고)에 정의된 엔드포인트를 그대로 사용합니다.
 
 예를 들어, 다음 API 호출:
 ```bash
-curl 'http://localhost:8000/api/v1/mcp-servers/?status=approved&sort=favorites&order=desc&limit=20'
+curl 'http://localhost:8000/api/v1/mcp-servers/2'
 ```
 
 이것을 Python 코드로 작성:
 ```python
-data = await self._get("/api/v1/mcp-servers/", params)
+data = await self._get(f"/api/v1/mcp-servers/{server_id}")
 ```
 
 `src/client/api_client.py`:
 
 ```python
 """API client for MCP Hub"""
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import httpx
 
 
@@ -573,43 +562,16 @@ class APIClient:
         """Close the HTTP client"""
         await self.client.aclose()
 
-    async def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _get(self, endpoint: str) -> Dict[str, Any]:
         """Make a GET request to the API"""
         url = f"{self.api_base_url}{endpoint}"
-        response = await self.client.get(url, params=params)
+        response = await self.client.get(url)
         response.raise_for_status()
         return response.json()
 
-    async def list_servers(
-        self,
-        sort: str = "favorites",
-        order: str = "desc",
-        limit: int = 20
-    ) -> str:
-        """List MCP servers with sorting"""
-        params = {
-            "status": "approved",
-            "sort": sort,
-            "order": order,
-            "limit": limit,
-            "offset": 0
-        }
-        data = await self._get("/api/v1/mcp-servers/", params)
-
-        servers = data.get("items", [])
-        total = data.get("total", 0)
-
-        result = f"Total servers: {total}\n"
-        result += f"Showing {len(servers)} servers (sorted by {sort}, {order}):\n\n"
-
-        for server in servers:
-            result += f"ID: {server['id']}\n"
-            result += f"Name: {server['name']}\n"
-            result += f"Description: {server.get('description', 'N/A')}\n"
-            result += f"Favorites: {server.get('favorites_count', 0)}\n"
-            result += "-" * 60 + "\n\n"
-
-        return result
+    async def get_server_details(self, server_id: int) -> Dict[str, Any]:
+        """Get detailed information about a specific MCP server"""
+        return await self._get(f"/api/v1/mcp-servers/{server_id}")
 ```
 
 **코드 상세 설명**:
@@ -618,10 +580,7 @@ class APIClient:
 ```python
 def __init__(self, api_base_url: str = "http://localhost:8000"):
     self.api_base_url = api_base_url
-    self.client = httpx.AsyncClient(
-        timeout=30.0,
-        verify=False  # SSL 에러 방지
-    )
+    self.client = httpx.AsyncClient(timeout=30.0, verify=False)
 ```
 - `api_base_url`: MCP Hub API의 기본 URL
 - `timeout=30.0`: 요청 타임아웃 30초
@@ -629,55 +588,29 @@ def __init__(self, api_base_url: str = "http://localhost:8000"):
 
 #### 2. `_get` - HTTP GET 요청 헬퍼
 ```python
-async def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None):
+async def _get(self, endpoint: str) -> Dict[str, Any]:
     url = f"{self.api_base_url}{endpoint}"
-    response = await self.client.get(url, params=params)
+    response = await self.client.get(url)
     response.raise_for_status()
     return response.json()
 ```
 - 모든 GET 요청을 통합 처리
 - `raise_for_status()`: HTTP 에러 시 예외 발생
+- **반환값**: API 응답을 JSON Dict로 반환 (포맷팅은 Handler에서 담당)
 
-#### 3. `list_servers` - MCP 서버 목록 조회
+#### 3. `get_server_details` - MCP 서버 상세 정보 조회
 ```python
-async def list_servers(self, sort: str = "favorites", order: str = "desc", limit: int = 20):
-    params = {
-        "status": "approved",  # 승인된 서버만
-        "sort": sort,           # 정렬 기준
-        "order": order,         # 정렬 순서
-        "limit": limit,         # 결과 개수
-        "offset": 0             # 페이징 시작 위치
-    }
-    data = await self._get("/api/v1/mcp-servers/", params)  # 실제 API 호출
+async def get_server_details(self, server_id: int) -> Dict[str, Any]:
+    return await self._get(f"/api/v1/mcp-servers/{server_id}")
 ```
-- **API 엔드포인트**: `/api/v1/mcp-servers/`
-- **파라미터**: MCP Hub API 문서에 정의된 파라미터를 그대로 사용
-  - `status`: "approved" (승인된 서버만)
-  - `sort`: "favorites" (인기순) 또는 "created_at" (최신순)
-  - `order`: "desc" (내림차순) 또는 "asc" (오름차순)
-  - `limit`: 최대 결과 개수
-  - `offset`: 페이징 시작 위치
-- **반환값**: API 응답을 포맷팅한 문자열 (Claude가 읽기 좋은 형식)
-
-#### 4. 응답 포맷팅
-```python
-result = f"Total servers: {total}\n"
-result += f"Showing {len(servers)} servers (sorted by {sort}, {order}):\n\n"
-
-for server in servers:
-    result += f"ID: {server['id']}\n"
-    result += f"Name: {server['name']}\n"
-    result += f"Description: {server.get('description', 'N/A')}\n"
-    result += f"Favorites: {server.get('favorites_count', 0)}\n"
-    result += "-" * 60 + "\n\n"
-```
-- AI가 이해하기 쉬운 텍스트 형식으로 변환
-- `get()` 메서드로 안전하게 필드 접근 (없으면 기본값)
+- **API 엔드포인트**: `/api/v1/mcp-servers/{server_id}`
+- **파라미터**: `server_id` (MCP 서버 ID)
+- **반환값**: 서버 상세 정보를 담은 Dict
 
 **핵심 포인트**:
 - `httpx.AsyncClient`: 비동기 HTTP 클라이언트 (MCP는 비동기 기반)
 - `verify=False`: SSL 인증서 검증 비활성화 (사내 서비스용)
-- 응답 포맷팅: Claude가 읽기 좋은 문자열로 변환
+- **관심사 분리**: API Client는 데이터 조회만, 포맷팅은 Handler가 담당
 
 > **참고**: 실제 프로덕션 환경에서는 에러 처리(`try-except`)와 로깅을 추가하는 것이 좋습니다. 이 튜토리얼에서는 핵심 개념에 집중하기 위해 생략했습니다.
 
@@ -693,27 +626,47 @@ for server in servers:
 
 ```python
 """Tool handlers for MCP Hub MCP Server"""
-from typing import Any
+from typing import Any, Dict
 from mcp.types import TextContent
+
+
+def format_server_details(data: Dict[str, Any]) -> str:
+    """Format server details data into readable text"""
+    if not data:
+        return "Server not found"
+
+    lines = []
+    lines.append(f"📦 {data.get('name', 'Unknown')}")
+    lines.append(f"   ID: {data.get('id')}")
+    lines.append(f"   Description: {data.get('description', 'No description')}")
+    lines.append(f"   Author: {data.get('author', 'Unknown')}")
+    lines.append(f"   ⭐ Favorites: {data.get('favorites_count', 0)}")
+
+    if data.get('repository_url'):
+        lines.append(f"   🔗 Repository: {data['repository_url']}")
+
+    if data.get('created_at'):
+        lines.append(f"   📅 Created: {data['created_at']}")
+
+    return "\n".join(lines)
 
 
 async def handle_tool_call(name: str, arguments: Any, api_client) -> list[TextContent]:
     """Handle tool calls from MCP clients"""
 
-    if name == "list_mcp_servers":
-        result = await api_client.list_servers(
-            sort=arguments.get("sort", "favorites"),
-            order=arguments.get("order", "desc"),
-            limit=arguments.get("limit", 20)
-        )
-        return [TextContent(type="text", text=result)]
+    if name == "get_mcp_server_details":
+        server_id = arguments.get("server_id")
+        data = await api_client.get_server_details(server_id)
+        formatted_text = format_server_details(data)
+        return [TextContent(type="text", text=formatted_text)]
 
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 ```
 
 **핵심 포인트**:
+- **관심사 분리**: `format_server_details()` 함수가 포맷팅 담당
 - **간단한 라우팅**: Tool이 하나뿐이므로 간단한 `if` 문으로 처리
-- **파라미터 처리**: `arguments.get()`으로 기본값 제공
+- **파라미터 처리**: `arguments.get("server_id")`로 파라미터 추출
 - **응답 형식**: 반드시 `list[TextContent]` 반환 (MCP 스펙)
 - **도구 추가하기**: 더 많은 도구를 추가하려면 `elif` 문으로 확장
 
@@ -725,12 +678,8 @@ async def handle_tool_call(name: str, arguments: Any, api_client) -> list[TextCo
 
 ```python
 """HTTP/SSE transport for MCP Hub MCP Server"""
-import asyncio
 import os
 from mcp.server.sse import SseServerTransport
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.responses import JSONResponse
 import uvicorn
 
 
@@ -739,55 +688,60 @@ async def run_http_transport(app, api_client) -> None:
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "10004"))
 
-    # Health check endpoint
-    async def health_check(request):
-        return JSONResponse({
-            "status": "healthy",
-            "service": "mcp-hub-mcp",
-            "transport": "http/sse",
-            "port": port
-        })
-
     # SSE Transport 생성
     sse = SseServerTransport("/messages")
 
-    # Starlette 앱 생성
-    starlette_app = Starlette(
-        routes=[
-            Route("/health", health_check),
-            *sse.get_routes()
-        ]
-    )
+    # ASGI app
+    async def asgi_app(scope, receive, send):
+        """Main ASGI app for routing"""
+        if scope["type"] == "http":
+            path = scope["path"]
 
-    async def run_server():
-        """Run uvicorn server"""
-        config = uvicorn.Config(starlette_app, host=host, port=port)
+            if path == "/sse":
+                # Handle SSE endpoint
+                async with sse.connect_sse(scope, receive, send) as streams:
+                    await app.run(
+                        streams[0], streams[1], app.create_initialization_options()
+                    )
+            elif path == "/messages":
+                # Handle messages endpoint
+                await sse.handle_post_message(scope, receive, send)
+            elif path == "/health":
+                # Health check
+                await send({
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [[b"content-type", b"application/json"]],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": b'{"status":"healthy","service":"mcp-hub-mcp"}',
+                })
+            else:
+                # 404 for other paths
+                await send({
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [[b"content-type", b"text/plain"]],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": b"Not Found",
+                })
+
+    try:
+        config = uvicorn.Config(asgi_app, host=host, port=port)
         server = uvicorn.Server(config)
         await server.serve()
-
-    async def run_mcp():
-        """Run MCP protocol handler"""
-        async with sse.connect_sse(
-            starlette_app.app,
-            app.create_initialization_options()
-        ) as streams:
-            await app.run(
-                streams[0],
-                streams[1],
-                app.create_initialization_options()
-            )
-
-    # 서버와 MCP 핸들러 동시 실행
-    await asyncio.gather(run_server(), run_mcp())
-
-    # 종료 시 정리
-    await api_client.close()
+    finally:
+        await api_client.close()
 ```
 
 **핵심 포인트**:
-- **SSE (Server-Sent Events)**: 실시간 양방향 통신 지원
+- **순수 ASGI 구현**: 외부 웹 프레임워크 없이 ASGI만 사용
+- **SSE 엔드포인트**: `/sse` - 클라이언트가 연결하는 주소
+- **메시지 엔드포인트**: `/messages` - 클라이언트가 메시지를 보내는 주소
 - **Health Check**: `/health` 엔드포인트로 서버 상태 확인
-- **asyncio.gather**: 웹 서버와 MCP 핸들러를 동시에 실행
 
 ### 6.3 메인 진입점 구현
 
