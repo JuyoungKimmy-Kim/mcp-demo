@@ -3,34 +3,17 @@ from mcp.types import Tool
 
 TOOLS = [
     Tool(
-        name="list_mcp_servers",
-        description="List MCP servers with sorting and pagination",
+        name="get_mcp_server_details",
+        description="Get detailed information about a specific MCP server",
         inputSchema={
             "type": "object",
             "properties": {
-                "sort": {
-                    "type": "string",
-                    "enum": ["favorites", "created_at"],
-                    "description": "Sort by favorites or creation date",
-                    "default": "favorites"
-                },
-                "order": {
-                    "type": "string",
-                    "enum": ["asc", "desc"],
-                    "description": "Sort order",
-                    "default": "desc"
-                },
-                "limit": {
+                "server_id": {
                     "type": "integer",
-                    "description": "Number of results",
-                    "default": 20
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Number of results to skip",
-                    "default": 0
+                    "description": "The ID of the MCP server"
                 }
-            }
+            },
+            "required": ["server_id"]
         }
     ),
 ]
