@@ -148,7 +148,82 @@ MCP 서버와 AI 모델이 **어떻게** 통신할지 정의합니다.
 | 로컬 파일 접근 | ⭐ 필수 | - |
 | 순수 API 호출 | - | ⭐ 추천 |
 
-### 2.3 Resources와 Prompts (이번 실습에서는 다루지 않음)
+### 2.3 MCP 구현 방식
+
+MCP 서버를 만드는 방법은 크게 두 가지가 있습니다:
+
+#### 1. **공식 MCP Python SDK** (이 튜토리얼에서 사용)
+
+```python
+from mcp.server import Server
+
+app = Server("server-name")
+
+@app.list_tools()
+async def list_tools():
+    return [Tool(...)]
+
+@app.call_tool()
+async def call_tool(name: str, arguments: dict):
+    # 수동 라우팅 처리
+    if name == "my_tool":
+        return [TextContent(type="text", text="result")]
+```
+
+**특징**:
+- ✅ 공식 SDK, 가장 표준적인 방식
+- ✅ 명시적이고 세밀한 제어 가능
+- ✅ MCP 스펙을 직접 다룸
+- ❌ 코드가 비교적 장황함
+- ❌ 수동으로 라우팅 처리 필요
+
+#### 2. **FastMCP** (간편한 대안)
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("server-name")
+
+@mcp.tool()
+def my_tool(arg: str) -> str:
+    """도구 설명"""
+    return "result"
+```
+
+**특징**:
+- ✅ FastAPI 스타일의 간결한 문법
+- ✅ 타입 힌트로 자동 스키마 생성
+- ✅ 자동 라우팅
+- ❌ 비공식 라이브러리
+- ❌ 세밀한 제어가 어려울 수 있음
+
+#### 이 튜토리얼의 선택
+
+**공식 SDK를 사용하는 이유**:
+1. **표준 방식 학습**: MCP의 기본 개념을 정확히 이해
+2. **공식 지원**: Anthropic 공식 SDK
+3. **세밀한 제어**: Tool 정의, 실행 로직, Transport를 명확히 분리
+4. **확장성**: 복잡한 로직도 쉽게 구현
+
+> FastMCP는 프로토타이핑이나 간단한 서버에 적합합니다. 하지만 이 튜토리얼에서는 MCP의 내부 동작을 이해하기 위해 공식 SDK를 사용합니다.
+
+#### MCP 서버의 역할
+
+**중요**: MCP 서버는 **중개자(Proxy)** 역할입니다.
+
+```
+AI Model (Claude)
+    ↓ MCP Protocol
+MCP Server (우리가 만드는 것)
+    ↓ HTTP/DB/File/etc
+External Data Source (MCP Hub API 등)
+```
+
+- MCP Hub REST API (`http://localhost:8000`)는 **외부 데이터 소스**
+- MCP 서버는 이 API를 호출하여 결과를 AI에게 전달
+- FastMCP든 공식 SDK든 **모두 외부 API를 호출하는 중개자**
+
+### 2.4 Resources와 Prompts (이번 실습에서는 다루지 않음)
 
 - **Resources**: AI가 읽을 수 있는 데이터 (파일, 문서 등)
 - **Prompts**: 재사용 가능한 프롬프트 템플릿
@@ -308,27 +383,97 @@ async with stdio_server() as (read_stream, write_stream):
 - 표준 입출력으로 통신
 - 로컬에서 Claude Desktop과 연동 가능
 
-### 4.3 테스트
+### 4.3 Roocode 연동 방법 (참고용)
+
+> **주의**: Hello World 서버는 실제로 유용한 기능이 없습니다. 이 섹션은 **MCP 서버를 Roocode에 연결하는 방법을 설명하기 위한 것**입니다. 실제로 사용할 MCP 서버는 섹션 5의 "MCP Hub 서버"입니다.
+
+Roocode (또는 다른 MCP 클라이언트)에서 MCP 서버를 연결하는 방법을 알아봅시다.
+
+#### 1. Roocode 설정 파일 수정
+
+Roocode의 MCP 설정 파일에 다음을 추가합니다:
+
+**macOS/Linux:**
+```bash
+# Roocode 설정 파일 위치
+~/.roo/mcp_config.json
+```
+
+**설정 내용:**
+```json
+{
+  "mcpServers": {
+    "hello-mcp": {
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": ["${workspaceFolder}/hello_mcp.py"],
+      "disabled": false
+    }
+  }
+}
+```
+
+**Windows의 경우:**
+```json
+{
+  "mcpServers": {
+    "hello-mcp": {
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["${workspaceFolder}\\hello_mcp.py"],
+      "disabled": false
+    }
+  }
+}
+```
+
+**설정 설명:**
+- `command`: Python 실행 파일 경로 (가상환경의 Python 사용)
+- `args`: 실행할 스크립트 경로
+- `${workspaceFolder}`: 현재 프로젝트 디렉토리를 자동으로 참조
+- `disabled: false`: 서버 활성화
+
+#### 2. Roocode 재시작
+
+설정 파일을 저장한 후 Roocode를 재시작합니다.
+
+#### 3. 테스트 (선택 사항)
+
+원한다면 Roocode에서 다음과 같이 질문해보세요:
+
+```
+"내 이름은 김철수야. 인사해줘!"
+```
+
+Roocode가 `say_hello` 도구를 사용하여 "안녕하세요, 김철수님!"이라고 응답하는 것을 확인할 수 있습니다.
+
+> 하지만 이 서버는 단순히 인사만 하는 기능이므로 실제로는 유용하지 않습니다. 실전 프로젝트인 "MCP Hub 서버"에서 실제로 유용한 MCP 서버를 만들어봅시다!
+
+#### 4. 직접 실행 테스트
+
+터미널에서 직접 실행할 수도 있습니다:
 
 ```bash
 python hello_mcp.py
 ```
 
-서버가 실행되면 대기 상태가 됩니다. (Claude Desktop과 연결 전)
+서버가 실행되면 대기 상태가 됩니다. (MCP 클라이언트와 연결 전)
+
+**주의사항:**
+- 가상환경이 활성화된 상태에서 실행해야 합니다
+- `hello_mcp.py` 파일이 실행 가능한지 확인하세요 (`chmod +x hello_mcp.py`)
+- 로그 메시지가 표시되면 정상적으로 실행된 것입니다
 
 ---
 
-## 5. 실전 프로젝트: MCP Hub 서버
+## 5. 실전 프로젝트 Part 1: Tool과 API 클라이언트
 
 이제 실제로 유용한 MCP 서버를 만들어봅시다!
 
 **목표**: MCP Hub 데이터베이스를 검색하는 MCP 서버
 
 **제공 기능**:
-- `search_mcp_servers`: 키워드로 MCP 서버 검색
 - `list_mcp_servers`: 서버 목록 조회 (정렬, 페이징)
-- `get_mcp_server_details`: 서버 상세 정보
-- `get_top_contributors`: 상위 기여자 조회
+
+> 이 튜토리얼에서는 `list_mcp_servers` 하나만 구현하여 MCP 서버의 핵심 개념을 배웁니다. 다른 기능들(`search_mcp_servers`, `get_mcp_server_details`, `get_top_contributors`)은 같은 패턴으로 추가할 수 있습니다.
 
 **데이터 소스**: MCP Hub REST API (`http://localhost:8000`)
 
@@ -355,25 +500,6 @@ from mcp.types import Tool
 
 TOOLS = [
     Tool(
-        name="search_mcp_servers",
-        description="Search for MCP servers by keyword",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search keyword"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results",
-                    "default": 10
-                }
-            },
-            "required": ["query"]
-        }
-    ),
-    Tool(
         name="list_mcp_servers",
         description="List MCP servers with sorting and pagination",
         inputSchema={
@@ -395,34 +521,6 @@ TOOLS = [
                     "type": "integer",
                     "description": "Number of results",
                     "default": 20
-                }
-            }
-        }
-    ),
-    Tool(
-        name="get_mcp_server_details",
-        description="Get detailed information about a specific MCP server",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "server_id": {
-                    "type": "integer",
-                    "description": "The server ID"
-                }
-            },
-            "required": ["server_id"]
-        }
-    ),
-    Tool(
-        name="get_top_contributors",
-        description="Get list of top contributors",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "description": "Number of contributors to return",
-                    "default": 10
                 }
             }
         }
@@ -482,37 +580,6 @@ class APIClient:
             logger.error(f"Request error: {str(e)}")
             return {"error": str(e)}
 
-    async def search_servers(self, query: str, limit: int = 10) -> str:
-        """Search for MCP servers"""
-        # MCP Hub API는 검색을 지원하지 않으므로 전체 목록에서 필터링
-        params = {"status": "approved", "limit": 100}
-        data = await self._get("/api/v1/mcp-servers/", params)
-
-        if "error" in data:
-            return f"Error: {data['error']}"
-
-        servers = data.get("items", [])
-
-        # 키워드로 필터링
-        filtered = [
-            s for s in servers
-            if query.lower() in s.get("name", "").lower()
-            or query.lower() in s.get("description", "").lower()
-        ][:limit]
-
-        if not filtered:
-            return f"No servers found matching '{query}'"
-
-        result = f"Found {len(filtered)} server(s) matching '{query}':\n\n"
-        for server in filtered:
-            result += f"ID: {server['id']}\n"
-            result += f"Name: {server['name']}\n"
-            result += f"Description: {server.get('description', 'N/A')}\n"
-            result += f"Favorites: {server.get('favorites_count', 0)}\n"
-            result += "-" * 60 + "\n\n"
-
-        return result
-
     async def list_servers(
         self,
         sort: str = "favorites",
@@ -546,43 +613,68 @@ class APIClient:
             result += "-" * 60 + "\n\n"
 
         return result
-
-    async def get_server_details(self, server_id: int) -> str:
-        """Get detailed information about a server"""
-        data = await self._get(f"/api/v1/mcp-servers/{server_id}")
-
-        if "error" in data:
-            return f"Error: {data['error']}"
-
-        result = f"Server Details (ID: {server_id}):\n\n"
-        result += f"Name: {data.get('name', 'N/A')}\n"
-        result += f"Description: {data.get('description', 'N/A')}\n"
-        result += f"Repository: {data.get('repository_url', 'N/A')}\n"
-        result += f"Author: {data.get('username', 'N/A')}\n"
-        result += f"Status: {data.get('status', 'N/A')}\n"
-        result += f"Favorites: {data.get('favorites_count', 0)}\n"
-        result += f"Created: {data.get('created_at', 'N/A')}\n"
-
-        return result
-
-    async def get_top_contributors(self, limit: int = 10) -> str:
-        """Get top contributors"""
-        params = {"limit": limit}
-        data = await self._get("/api/v1/mcp-servers/top-users", params)
-
-        if "error" in data:
-            return f"Error: {data['error']}"
-
-        contributors = data.get("top_users", [])
-
-        result = f"Top {len(contributors)} Contributors:\n\n"
-        for i, contributor in enumerate(contributors, 1):
-            result += f"{i}. {contributor.get('username', 'N/A')}\n"
-            result += f"   Total Servers: {contributor.get('total_servers', 0)}\n"
-            result += f"   Total Favorites: {contributor.get('total_favorites', 0)}\n\n"
-
-        return result
 ```
+
+**코드 상세 설명**:
+
+#### 1. `__init__` - 클라이언트 초기화
+```python
+def __init__(self, api_base_url: str = "http://localhost:8000"):
+    self.api_base_url = api_base_url.rstrip('/')
+    self.client = httpx.AsyncClient(
+        timeout=30.0,
+        verify=False  # SSL 에러 방지
+    )
+```
+- `api_base_url`: MCP Hub API의 기본 URL
+- `rstrip('/')`: URL 끝의 슬래시 제거 (일관성 유지)
+- `timeout=30.0`: 요청 타임아웃 30초
+- `verify=False`: SSL 인증서 검증 비활성화 (사내 HTTPS 서비스에서 자체 서명 인증서 사용 시 필요)
+
+#### 2. `_get` - HTTP GET 요청 헬퍼
+```python
+async def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None):
+    url = f"{self.api_base_url}{endpoint}"
+    response = await self.client.get(url, params=params)
+    response.raise_for_status()  # 4xx, 5xx 에러 시 예외 발생
+    return response.json()
+```
+- 모든 GET 요청을 통합 처리
+- `raise_for_status()`: HTTP 에러를 Python 예외로 변환
+- 에러 발생 시 `{"error": "..."}` 형식으로 반환
+
+#### 3. `list_servers` - MCP 서버 목록 조회
+```python
+async def list_servers(self, sort: str = "favorites", order: str = "desc", limit: int = 20):
+    params = {
+        "status": "approved",  # 승인된 서버만
+        "sort": sort,           # 정렬 기준
+        "order": order,         # 정렬 순서
+        "limit": limit,         # 결과 개수
+        "offset": 0             # 페이징 시작 위치
+    }
+    data = await self._get("/api/v1/mcp-servers/", params)
+```
+- **파라미터**:
+  - `sort`: "favorites" (인기순) 또는 "created_at" (최신순)
+  - `order`: "desc" (내림차순) 또는 "asc" (오름차순)
+  - `limit`: 최대 결과 개수
+- **반환값**: 포맷팅된 문자열 (Claude가 읽기 좋은 형식)
+
+#### 4. 응답 포맷팅
+```python
+result = f"Total servers: {total}\n"
+result += f"Showing {len(servers)} servers (sorted by {sort}, {order}):\n\n"
+
+for server in servers:
+    result += f"ID: {server['id']}\n"
+    result += f"Name: {server['name']}\n"
+    result += f"Description: {server.get('description', 'N/A')}\n"
+    result += f"Favorites: {server.get('favorites_count', 0)}\n"
+    result += "-" * 60 + "\n\n"
+```
+- AI가 이해하기 쉬운 텍스트 형식으로 변환
+- `get()` 메서드로 안전하게 필드 접근 (없으면 기본값)
 
 **핵심 포인트**:
 - `httpx.AsyncClient`: 비동기 HTTP 클라이언트 (MCP는 비동기 기반)
@@ -590,7 +682,13 @@ class APIClient:
 - 에러 처리: `try-except`로 네트워크 에러 핸들링
 - 응답 포맷팅: Claude가 읽기 좋은 문자열로 변환
 
-### 5.4 Step 3: Tool Handler 구현
+---
+
+## 6. 실전 프로젝트 Part 2: MCP 서버 구현
+
+이제 Tool 정의와 API 클라이언트를 MCP 서버로 통합해봅시다!
+
+### 6.1 Tool Handler 구현
 
 `src/handlers/tools.py`:
 
@@ -601,46 +699,6 @@ from typing import Any
 from mcp.types import TextContent
 
 logger = logging.getLogger("mcp-hub-mcp.handlers")
-
-
-async def _search_mcp_servers(api_client, arguments: dict[str, Any]) -> str:
-    """Search MCP servers"""
-    return await api_client.search_servers(
-        query=arguments["query"],
-        limit=arguments.get("limit", 10)
-    )
-
-
-async def _list_mcp_servers(api_client, arguments: dict[str, Any]) -> str:
-    """List MCP servers"""
-    return await api_client.list_servers(
-        sort=arguments.get("sort", "favorites"),
-        order=arguments.get("order", "desc"),
-        limit=arguments.get("limit", 20)
-    )
-
-
-async def _get_mcp_server_details(api_client, arguments: dict[str, Any]) -> str:
-    """Get MCP server details"""
-    return await api_client.get_server_details(
-        server_id=arguments["server_id"]
-    )
-
-
-async def _get_top_contributors(api_client, arguments: dict[str, Any]) -> str:
-    """Get top contributors"""
-    return await api_client.get_top_contributors(
-        limit=arguments.get("limit", 10)
-    )
-
-
-# Tool handler mapping
-TOOL_HANDLERS = {
-    "search_mcp_servers": _search_mcp_servers,
-    "list_mcp_servers": _list_mcp_servers,
-    "get_mcp_server_details": _get_mcp_server_details,
-    "get_top_contributors": _get_top_contributors,
-}
 
 
 async def handle_tool_call(name: str, arguments: Any, api_client) -> list[TextContent]:
@@ -659,12 +717,15 @@ async def handle_tool_call(name: str, arguments: Any, api_client) -> list[TextCo
         return [TextContent(type="text", text="Error: API client not initialized")]
 
     try:
-        handler = TOOL_HANDLERS.get(name)
-        if handler is None:
+        if name == "list_mcp_servers":
+            result = await api_client.list_servers(
+                sort=arguments.get("sort", "favorites"),
+                order=arguments.get("order", "desc"),
+                limit=arguments.get("limit", 20)
+            )
+            return [TextContent(type="text", text=result)]
+        else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-        result = await handler(api_client, arguments)
-        return [TextContent(type="text", text=result)]
 
     except Exception as e:
         logger.error(f"Error calling tool {name}: {e}", exc_info=True)
@@ -672,11 +733,13 @@ async def handle_tool_call(name: str, arguments: Any, api_client) -> list[TextCo
 ```
 
 **핵심 포인트**:
-- **Dict 기반 라우팅**: `TOOL_HANDLERS` 딕셔너리로 도구 이름을 핸들러 함수에 매핑
-- **각 도구를 별도 함수로**: 단일 책임 원칙, 테스트 용이
+- **간단한 라우팅**: Tool이 하나뿐이므로 간단한 `if` 문으로 처리
+- **파라미터 처리**: `arguments.get()`으로 기본값 제공
 - **응답 형식**: 반드시 `list[TextContent]` 반환 (MCP 스펙)
+- **에러 처리**: 예외 발생 시 로그 기록 후 에러 메시지 반환
+- **도구 추가하기**: 더 많은 도구를 추가하려면 `elif` 문으로 확장하거나, Tool이 많아지면 별도 함수로 분리할 수 있습니다
 
-### 5.5 Step 4: HTTP Transport 구현
+### 6.2 HTTP Transport 구현
 
 `src/transport/http.py`:
 
@@ -770,7 +833,7 @@ async def run_http_transport(app, api_client) -> None:
 - **Health Check**: `/health` 엔드포인트로 서버 상태 확인
 - **asyncio.gather**: 웹 서버와 MCP 핸들러를 동시에 실행
 
-### 5.6 Step 5: 메인 진입점 구현
+### 6.3 메인 진입점 구현
 
 `src/main.py`:
 
@@ -835,7 +898,7 @@ if __name__ == "__main__":
 - **데코레이터**: `@app.list_tools()`, `@app.call_tool()`로 핸들러 등록
 - **모듈화**: 각 기능을 별도 모듈로 분리하여 관리
 
-### 5.7 실행 및 테스트
+### 6.4 실행 및 테스트
 
 #### 1. 서버 실행
 
@@ -869,9 +932,9 @@ curl http://localhost:10004/health
 
 ---
 
-## 6. Claude Desktop 연동
+## 7. Claude Desktop 연동
 
-### 6.1 Claude Desktop 설정 파일 위치
+### 7.1 Claude Desktop 설정 파일 위치
 
 **macOS:**
 ```
@@ -888,7 +951,7 @@ curl http://localhost:10004/health
 ~/.config/Claude/claude_desktop_config.json
 ```
 
-### 6.2 HTTP Transport 연결 설정
+### 7.2 HTTP Transport 연결 설정
 
 `claude_desktop_config.json`:
 
@@ -903,38 +966,38 @@ curl http://localhost:10004/health
 }
 ```
 
-### 6.3 Claude Desktop 재시작
+### 7.3 Claude Desktop 재시작
 
 설정 파일을 저장한 후 Claude Desktop을 완전히 종료하고 다시 시작합니다.
 
-### 6.4 MCP 서버 연결 확인
+### 7.4 MCP 서버 연결 확인
 
 Claude Desktop에서 MCP 서버가 연결되었는지 확인:
 1. 우측 하단의 🔌 아이콘 클릭
 2. "mcp-hub" 서버가 목록에 표시되는지 확인
 3. 연결 상태가 "Connected"인지 확인
 
-### 6.5 테스트 질문
+### 7.5 테스트 질문
 
-Claude Desktop에서 다음과 같이 질문해보세요:
+Claude Desktop (또는 Roocode)에서 다음과 같이 질문해보세요:
 
 ```
 1. "MCP 서버 목록을 보여줘"
 
-2. "GitHub 관련 MCP 서버를 검색해줘"
+2. "인기 있는 MCP 서버 상위 5개를 보여줘"
 
-3. "인기 있는 MCP 서버 상위 5개를 보여줘"
-
-4. "ID가 2인 MCP 서버의 상세 정보를 알려줘"
-
-5. "상위 기여자 3명을 보여줘"
+3. "생성일 기준으로 최신 MCP 서버 3개를 보여줘"
 ```
 
-Claude가 MCP 서버의 도구를 사용하여 응답하는 것을 확인할 수 있습니다!
+Claude가 MCP 서버의 `list_mcp_servers` 도구를 사용하여 응답하는 것을 확인할 수 있습니다!
+
+**예상 결과**:
+- Claude가 자동으로 적절한 파라미터(`sort`, `order`, `limit`)를 선택
+- MCP Hub API에서 서버 목록을 가져와 포맷팅된 결과 반환
 
 ---
 
-## 7. 마무리
+## 8. 마무리
 
 축하합니다! 🎉
 
@@ -966,6 +1029,10 @@ Claude가 MCP 서버의 도구를 사용하여 응답하는 것을 확인할 수
 ### 다음 단계
 
 1. **기능 확장**
+   - 더 많은 Tool 추가:
+     - `search_mcp_servers`: 키워드로 MCP 서버 검색
+     - `get_mcp_server_details`: 서버 상세 정보 조회
+     - `get_top_contributors`: 상위 기여자 조회
    - Resources 추가 (MCP 서버 문서 제공)
    - Prompts 추가 (코드 리뷰 템플릿 등)
 
