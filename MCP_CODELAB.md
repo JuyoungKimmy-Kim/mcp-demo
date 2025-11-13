@@ -479,7 +479,7 @@ python hello_mcp.py
 
 **Transport**: HTTP/SSE
 
-**Server URL**: `http://localhost:10004/sse`
+**Server URL**: `http://localhost:10004/messages`
 
 ### 5.1 프로젝트 구조 만들기
 
@@ -870,7 +870,7 @@ Roocode의 MCP 설정 파일(`~/.roo/mcp_config.json`):
 {
   "mcpServers": {
     "mcp-hub": {
-      "url": "http://localhost:10004/sse",
+      "url": "http://localhost:10004/messages",
       "transport": "sse"
     }
   }
@@ -880,7 +880,7 @@ Roocode의 MCP 설정 파일(`~/.roo/mcp_config.json`):
 **중요**:
 - URL에 반드시 `http://` 또는 `https://` 프로토콜을 명시해야 합니다
 - Claude Desktop은 `/messages` 엔드포인트를 사용
-- Roocode는 `/sse` 엔드포인트를 사용
+- Roocode와 Claude Desktop 모두 `/messages` 엔드포인트를 사용합니다
 
 **사내 환경에서 사용하는 경우:**
 
@@ -889,7 +889,7 @@ Roocode 설정 예시 (사내 서버):
 {
   "mcpServers": {
     "mcp-hub": {
-      "url": "https://your-internal-server:7540/sse",
+      "url": "https://your-internal-server:7540/messages",
       "transport": "sse"
     }
   }
