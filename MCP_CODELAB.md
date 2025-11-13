@@ -847,6 +847,8 @@ curl http://localhost:10004/health
 
 ### 7.2 HTTP Transport 연결 설정
 
+#### Claude Desktop 설정
+
 `claude_desktop_config.json`:
 
 ```json
@@ -860,7 +862,44 @@ curl http://localhost:10004/health
 }
 ```
 
-### 7.3 Claude Desktop 재시작
+#### Roocode 설정
+
+Roocode의 MCP 설정 파일(`~/.roo/mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "mcp-hub": {
+      "url": "http://localhost:10004/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+**중요**:
+- URL에 반드시 `http://` 또는 `https://` 프로토콜을 명시해야 합니다
+- Claude Desktop은 `/messages` 엔드포인트를 사용
+- Roocode는 `/sse` 엔드포인트를 사용
+
+**사내 환경에서 사용하는 경우:**
+
+Roocode 설정 예시 (사내 서버):
+```json
+{
+  "mcpServers": {
+    "mcp-hub": {
+      "url": "https://your-internal-server:7540/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+- `https://your-internal-server:7540`: 사내 MCP 서버 주소
+- SSL 인증서 문제가 있는 경우, MCP 서버 코드에서 `verify=False` 설정이 적용됨
+
+### 7.3 Claude Desktop / Roocode 재시작
 
 설정 파일을 저장한 후 Claude Desktop을 완전히 종료하고 다시 시작합니다.
 
